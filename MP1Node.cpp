@@ -240,9 +240,51 @@ void MP1Node::checkMessages() {
  * DESCRIPTION: Message handler for different message types
  */
 bool MP1Node::recvCallBack(void *env, char *data, int size ) {
-    /*
-    * Your code goes here
-    */
+    MessageHdr *recMsgHdr = (MessageHdr *) data;
+    if (recMsgHdr->msgType == JOINREQ) {
+        return handleJoinReq(env, data, size);
+    }
+    if (recMsgHdr->msgType == JOINREP) {
+        return handleJoinRep(env, data, size);
+    }
+    if (recMsgHdr->msgType == UPDATEREQ) {
+        return handleUpdateReq(env, data, size);
+    }
+    if (recMsgHdr->msgType == UPDATEREP) {
+        return handleUpdateRep(env, data, size);
+    }
+    
+    return false;
+}
+
+/**
+* FUNCTION NAME: handleJoinReq
+* 
+* DESCRIPTION: Handle JOINREQ messages
+*/
+bool MP1Node::handleJoinReq(void* env, char *data, int size) {
+    Address *senderAddr = (Address *) (data + sizeof(MessageHdr));
+    int senderId = *(senderAddr->addr);
+    short senderPort = *(senderAddr->addr + 4);
+    long heartbeat = *(long *) (data + sizeof(MessageHdr) + 1 + sizeof(Address));
+
+    //reply a JOINREQ message containing the current membership vector back to the sender
+    size_t msgsize = sizeof(MessageHdr) + sizeof(MemberListEntry) * memberNode->memberList.size();
+    MessageHdr *msg = (MessageHdr *) malloc(msgsize * sizeof(char));
+    msg->msgType = JOINREP;
+    memcpy((char *)(msg+1), memberNode->memberList.data(), sizeof(MemberListEntry) * memberNode->memberList.size());
+    
+    emulNet->ENsend(&memberNode->addr, senderAddr, (char *)msg, msgsize);
+
+    free(msg);
+
+    // add the sender to the membership list
+    MemberListEntry *newEntry = new MemberListEntry(senderId, senderPort, heartbeat, par->getcurrtime());
+    memberNode->memberList.push_back(*newEntry);
+    if (memberNode->memberList.size() == par->MAX_NNB) {
+        //remove the first element of the list
+        memberNode->memberList.erase(memberNode->memberList.begin());
+    }
 }
 
 /**

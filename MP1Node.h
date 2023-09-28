@@ -73,6 +73,10 @@ public:
 	void nodeLoop();
 	void checkMessages();
 	bool recvCallBack(void *env, char *data, int size);
+	bool handleJoinReq(void* env, char *data, int size);
+	bool handleJoinRep(void* env, char *data, int size);
+	bool handleUpdateReq(void* env, char *data, int size);
+	bool handleUpdateRep(void* env, char *data, int size);
 	void nodeLoopOps();
 	int isNullAddress(Address *addr);
 	Address getJoinAddress();
