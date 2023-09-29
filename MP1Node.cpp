@@ -268,6 +268,14 @@ bool MP1Node::handleJoinReq(void* env, char *data, int size) {
     short senderPort = *(senderAddr->addr + 4);
     long heartbeat = *(long *) (data + sizeof(MessageHdr) + 1 + sizeof(Address));
 
+    // add the sender to the membership list
+    MemberListEntry *newEntry = new MemberListEntry(senderId, senderPort, heartbeat, par->getcurrtime());
+    memberNode->memberList.push_back(*newEntry);
+    if (memberNode->memberList.size() == par->MAX_NNB) {
+        //remove the first element of the list
+        memberNode->memberList.erase(memberNode->memberList.begin());
+    }
+
     //reply a JOINREQ message containing the current membership vector back to the sender
     size_t msgsize = sizeof(MessageHdr) + sizeof(MemberListEntry) * memberNode->memberList.size();
     MessageHdr *msg = (MessageHdr *) malloc(msgsize * sizeof(char));
@@ -277,14 +285,6 @@ bool MP1Node::handleJoinReq(void* env, char *data, int size) {
     emulNet->ENsend(&memberNode->addr, senderAddr, (char *)msg, msgsize);
 
     free(msg);
-
-    // add the sender to the membership list
-    MemberListEntry *newEntry = new MemberListEntry(senderId, senderPort, heartbeat, par->getcurrtime());
-    memberNode->memberList.push_back(*newEntry);
-    if (memberNode->memberList.size() == par->MAX_NNB) {
-        //remove the first element of the list
-        memberNode->memberList.erase(memberNode->memberList.begin());
-    }
 }
 
 /**
