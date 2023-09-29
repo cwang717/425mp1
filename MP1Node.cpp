@@ -247,13 +247,6 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
     if (recMsgHdr->msgType == JOINREP) {
         return handleJoinRep(env, data, size);
     }
-    if (recMsgHdr->msgType == UPDATEREQ) {
-        return handleUpdateReq(env, data, size);
-    }
-    if (recMsgHdr->msgType == UPDATEREP) {
-        return handleUpdateRep(env, data, size);
-    }
-    
     return false;
 }
 
