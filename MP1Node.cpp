@@ -264,10 +264,10 @@ bool MP1Node::handleJoinReq(void* env, char *data, int size) {
     // add the sender to the membership list
     MemberListEntry *newEntry = new MemberListEntry(senderId, senderPort, heartbeat, par->getcurrtime());
     memberNode->memberList.push_back(*newEntry);
-    if (memberNode->memberList.size() == par->MAX_NNB) {
-        //remove the first element of the list
-        memberNode->memberList.erase(memberNode->memberList.begin());
-    }
+    // if (memberNode->memberList.size() == par->MAX_NNB) {
+    //     //remove the first element of the list
+    //     memberNode->memberList.erase(memberNode->memberList.begin());
+    // }
 
     //reply a JOINREQ message containing the current membership vector back to the sender
     size_t msgsize = sizeof(MessageHdr) + sizeof(MemberListEntry) * memberNode->memberList.size();
@@ -278,6 +278,40 @@ bool MP1Node::handleJoinReq(void* env, char *data, int size) {
     emulNet->ENsend(&memberNode->addr, senderAddr, (char *)msg, msgsize);
 
     free(msg);
+}
+
+/**
+* FUNCTION NAME: handleJoinRep
+*
+* DESCRIPTION: Handle JOINREP messages 
+*/
+
+bool MP1Node::handleJoinRep(void* env, char *data, int size) {
+    vector<MemberListEntry> recvMemberList;
+    size_t listLen = (size - sizeof(MessageHdr)) / sizeof(MemberListEntry);
+    for (size_t i = 0; i < listLen; i++) {
+        MemberListEntry *entry = (MemberListEntry *) (data + sizeof(MessageHdr) + i * sizeof(MemberListEntry));
+        recvMemberList.push_back(*entry);
+    }
+    
+    for (auto& recvEntry : recvMemberList) {
+        bool found = false;
+        for (auto& entry : memberNode->memberList) {
+            if (recvEntry.id == entry.id && recvEntry.port == entry.port) {
+                found = true;
+                if (recvEntry.heartbeat >= entry.heartbeat) {
+                    entry.heartbeat = recvEntry.heartbeat;
+                    entry.timestamp = par->getcurrtime();
+                }
+                break;
+            }
+        }
+        if (!found) {
+            memberNode->memberList.push_back(recvEntry);
+            Address addr = Address(to_string(recvEntry.id) + ":" + to_string(recvEntry.port));
+            log->logNodeAdd(&memberNode->addr, &addr);
+        }
+    }
 }
 
 /**
