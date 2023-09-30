@@ -36,6 +36,8 @@ private:
 	Member *memberNode;
 	bool shouldDeleteMember;
 	char NULLADDR[6];
+	long T_FAIL = 5, T_CLEAN = 10;
+	unsigned fanout = 3;
 
 public:
 
@@ -47,6 +49,7 @@ public:
 	    JOINREP,
 	    UPDATEREQ,
 	    UPDATEREP,
+		GOSSIP,
 	    DUMMYLASTMSGTYPE
 	};
 
@@ -75,6 +78,7 @@ public:
 	bool recvCallBack(void *env, char *data, int size);
 	bool handleJoinReq(void* env, char *data, int size);
 	bool handleJoinRep(void* env, char *data, int size);
+	bool handleGossip(void* env, char *data, int size);
 	void nodeLoopOps();
 	int isNullAddress(Address *addr);
 	Address getJoinAddress();

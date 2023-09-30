@@ -185,9 +185,12 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
 * DESCRIPTION: Wind up this node and clean up state
 */
 int MP1Node::finishUpThisNode(){
-    /*
-     * Your code goes here
-     */
+    for (auto& entry : memberNode->memberList) {
+        Address addr = Address(to_string(entry.id) + ":" + to_string(entry.port));
+        log->logNodeRemove(&memberNode->addr, &addr);
+    }
+
+    return 0;
 }
 
 /**
@@ -278,6 +281,8 @@ bool MP1Node::handleJoinReq(void* env, char *data, int size) {
     emulNet->ENsend(&memberNode->addr, senderAddr, (char *)msg, msgsize);
 
     free(msg);
+    
+    return true;
 }
 
 /**
@@ -312,6 +317,17 @@ bool MP1Node::handleJoinRep(void* env, char *data, int size) {
             log->logNodeAdd(&memberNode->addr, &addr);
         }
     }
+
+    return true;
+}
+
+/**
+* FUNCTION NAME: handleGossip
+*
+* DESCRIPTION: Handle GOSSIP messages
+*/
+bool MP1Node::handleGossip(void* env, char *data, int size) {
+    return handleJoinRep(env, data, size);
 }
 
 /**
@@ -322,10 +338,37 @@ bool MP1Node::handleJoinRep(void* env, char *data, int size) {
 *                 Propagate your membership list
 */
 void MP1Node::nodeLoopOps() {
-    
-    /*
-     * Your code goes here
-     */
+    // update the heartbeat of the current node
+    memberNode->heartbeat++;
+    memberNode->memberList[0].heartbeat = memberNode->heartbeat;
+    memberNode->memberList[0].timestamp = par->getcurrtime();
+
+    for (auto it = memberNode->memberList.begin() + 1; it != memberNode->memberList.end(); ) {
+        if (par->getcurrtime() - it->timestamp > T_CLEAN) {
+            Address addr = Address(to_string(it->id) + ":" + to_string(it->port));
+            log->logNodeRemove(&memberNode->addr, &addr);
+            it = memberNode->memberList.erase(it);
+        } else {
+            it++;
+        }
+    }
+
+    // send the membership list to random fanout nodes in the membership list
+    for (unsigned i = 0; i < fanout; i++) {
+        unsigned index = rand() % memberNode->memberList.size();
+        if (!index) {
+            continue;
+        }
+        Address addr = Address(to_string(memberNode->memberList[index].id) + ":" + to_string(memberNode->memberList[index].port));
+        size_t msgsize = sizeof(MessageHdr) + sizeof(MemberListEntry) * memberNode->memberList.size();
+        MessageHdr *msg = (MessageHdr *) malloc(msgsize * sizeof(char));
+        msg->msgType = GOSSIP;
+        memcpy((char *)(msg+1), memberNode->memberList.data(), sizeof(MemberListEntry) * memberNode->memberList.size());
+        
+        emulNet->ENsend(&memberNode->addr, &addr, (char *)msg, msgsize);
+
+        free(msg);
+    }
 
     return;
 }
@@ -360,6 +403,8 @@ Address MP1Node::getJoinAddress() {
  */
 void MP1Node::initMemberListTable(Member *memberNode) {
 	memberNode->memberList.clear();
+    MemberListEntry *newEntry = new MemberListEntry(memberNode->addr.addr[0], memberNode->addr.addr[4], memberNode->heartbeat, par->getcurrtime());
+    memberNode->memberList.push_back(*newEntry);
 }
 
 /**
