@@ -121,8 +121,8 @@ int MP1Node::initThisNode(Address *joinaddr) {
     /*
     * This function is partially implemented and may require changes
     */
-	int id = *(int*)(&memberNode->addr.addr);
-	int port = *(short*)(&memberNode->addr.addr[4]);
+	// int id = *(int*)(&memberNode->addr.addr);
+	// int port = *(short*)(&memberNode->addr.addr[4]);
 
 	memberNode->bFailed = false;
 	memberNode->inited = true;
@@ -185,10 +185,10 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
 * DESCRIPTION: Wind up this node and clean up state
 */
 int MP1Node::finishUpThisNode(){
-    for (auto& entry : memberNode->memberList) {
-        Address addr = Address(to_string(entry.id) + ":" + to_string(entry.port));
-        log->logNodeRemove(&memberNode->addr, &addr);
-    }
+    // for (auto& entry : memberNode->memberList) {
+    //     Address addr = Address(to_string(entry.id) + ":" + to_string(entry.port));
+    //     log->logNodeRemove(&memberNode->addr, &addr);
+    // }
 
     return 0;
 }
@@ -250,6 +250,9 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
     if (recMsgHdr->msgType == JOINREP) {
         return handleJoinRep(env, data, size);
     }
+    if (recMsgHdr->msgType == GOSSIP) {
+        return handleGossip(env, data, size);
+    }
     return false;
 }
 
@@ -271,6 +274,7 @@ bool MP1Node::handleJoinReq(void* env, char *data, int size) {
     //     //remove the first element of the list
     //     memberNode->memberList.erase(memberNode->memberList.begin());
     // }
+    log->logNodeAdd(&memberNode->addr, senderAddr);
 
     //reply a JOINREQ message containing the current membership vector back to the sender
     size_t msgsize = sizeof(MessageHdr) + sizeof(MemberListEntry) * memberNode->memberList.size();
@@ -292,6 +296,16 @@ bool MP1Node::handleJoinReq(void* env, char *data, int size) {
 */
 
 bool MP1Node::handleJoinRep(void* env, char *data, int size) {
+    memberNode->inGroup = true;
+    return handleGossip(env, data, size);
+}
+
+/**
+* FUNCTION NAME: handleGossip
+*
+* DESCRIPTION: Handle GOSSIP messages
+*/
+bool MP1Node::handleGossip(void* env, char *data, int size) {
     vector<MemberListEntry> recvMemberList;
     size_t listLen = (size - sizeof(MessageHdr)) / sizeof(MemberListEntry);
     for (size_t i = 0; i < listLen; i++) {
@@ -304,7 +318,7 @@ bool MP1Node::handleJoinRep(void* env, char *data, int size) {
         for (auto& entry : memberNode->memberList) {
             if (recvEntry.id == entry.id && recvEntry.port == entry.port) {
                 found = true;
-                if (recvEntry.heartbeat >= entry.heartbeat) {
+                if (recvEntry.heartbeat > entry.heartbeat && par->getcurrtime() - entry.timestamp <= T_FAIL) {
                     entry.heartbeat = recvEntry.heartbeat;
                     entry.timestamp = par->getcurrtime();
                 }
@@ -313,21 +327,13 @@ bool MP1Node::handleJoinRep(void* env, char *data, int size) {
         }
         if (!found) {
             memberNode->memberList.push_back(recvEntry);
+            memberNode->memberList.back().timestamp = par->getcurrtime();
             Address addr = Address(to_string(recvEntry.id) + ":" + to_string(recvEntry.port));
             log->logNodeAdd(&memberNode->addr, &addr);
         }
     }
 
     return true;
-}
-
-/**
-* FUNCTION NAME: handleGossip
-*
-* DESCRIPTION: Handle GOSSIP messages
-*/
-bool MP1Node::handleGossip(void* env, char *data, int size) {
-    return handleJoinRep(env, data, size);
 }
 
 /**
@@ -343,7 +349,7 @@ void MP1Node::nodeLoopOps() {
     memberNode->memberList[0].heartbeat = memberNode->heartbeat;
     memberNode->memberList[0].timestamp = par->getcurrtime();
 
-    for (auto it = memberNode->memberList.begin() + 1; it != memberNode->memberList.end(); ) {
+    for (auto it = memberNode->memberList.begin(); it != memberNode->memberList.end(); ) {
         if (par->getcurrtime() - it->timestamp > T_CLEAN) {
             Address addr = Address(to_string(it->id) + ":" + to_string(it->port));
             log->logNodeRemove(&memberNode->addr, &addr);
@@ -353,19 +359,31 @@ void MP1Node::nodeLoopOps() {
         }
     }
 
-    // send the membership list to random fanout nodes in the membership list
+    // send the membership list to random fanout nodes
+    vector<MemberListEntry> activeMemberList;
+    for (auto& entry : memberNode->memberList) {
+        if (par->getcurrtime() - entry.timestamp <= T_FAIL) {
+            activeMemberList.push_back(entry);
+        }
+    }
     for (unsigned i = 0; i < fanout; i++) {
-        unsigned index = rand() % memberNode->memberList.size();
-        if (!index) {
+        // unsigned index = rand() % memberNode->memberList.size();
+        // if (!index) {
+        //     continue;
+        // }
+        // Address addr = Address(to_string(memberNode->memberList[index].id) + ":" + to_string(memberNode->memberList[index].port));
+        int id = rand() % par->EN_GPSZ + 1;
+        if (id == memberNode->memberList[0].id) {
             continue;
         }
-        Address addr = Address(to_string(memberNode->memberList[index].id) + ":" + to_string(memberNode->memberList[index].port));
-        size_t msgsize = sizeof(MessageHdr) + sizeof(MemberListEntry) * memberNode->memberList.size();
+        Address addr = Address(to_string(id) + ":" + to_string(par->PORTNUM));
+        size_t msgsize = sizeof(MessageHdr) + sizeof(MemberListEntry) * activeMemberList.size();
         MessageHdr *msg = (MessageHdr *) malloc(msgsize * sizeof(char));
         msg->msgType = GOSSIP;
-        memcpy((char *)(msg+1), memberNode->memberList.data(), sizeof(MemberListEntry) * memberNode->memberList.size());
+        memcpy((char *)(msg+1), activeMemberList.data(), sizeof(MemberListEntry) * activeMemberList.size());
         
         emulNet->ENsend(&memberNode->addr, &addr, (char *)msg, msgsize);
+        // log->LOG(&memberNode->addr, (" send gossip to " + addr.getAddress()).c_str());
 
         free(msg);
     }
@@ -405,6 +423,7 @@ void MP1Node::initMemberListTable(Member *memberNode) {
 	memberNode->memberList.clear();
     MemberListEntry *newEntry = new MemberListEntry(memberNode->addr.addr[0], memberNode->addr.addr[4], memberNode->heartbeat, par->getcurrtime());
     memberNode->memberList.push_back(*newEntry);
+    log->logNodeAdd(&memberNode->addr, &memberNode->addr);
 }
 
 /**

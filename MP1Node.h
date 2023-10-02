@@ -36,8 +36,8 @@ private:
 	Member *memberNode;
 	bool shouldDeleteMember;
 	char NULLADDR[6];
-	long T_FAIL = 5, T_CLEAN = 10;
-	unsigned fanout = 3;
+	long T_FAIL = 10, T_CLEAN = 20;
+	unsigned fanout = 4;
 
 public:
 
